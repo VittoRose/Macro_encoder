@@ -7,6 +7,9 @@
 #define ENABLE 3
 #define SIZE 100
 
+#define DEBOUNCEDELAY 70    
+#define MAXDOUBLE 400       // Max time to check doubleclick
+
 
 #define KEY_TAB 0x09
 #define KEY_ENTER 0x28
@@ -20,7 +23,8 @@ int old_counter = 0;
 uint8_t mode = 0;
 bool flag = true;
 bool first = true;
-
+unsigned long previousDebounceTime = 0;
+unsigned long lastDebounceTime = 0;
 unsigned long timer = 0;
 
 
@@ -48,9 +52,12 @@ void loop() {
     case 0:
       Tab_RAlt();
       break;
+    case 1:
+      //Vol_Control();
+    break;
     default:
       // do nothing
-      break;
+      break;  
   }
 }
 
@@ -63,9 +70,7 @@ void Tab_RAlt() {
 
     first = false;
   }
-
-  Serial.print("Flag: "); Serial.println(flag);
-
+Serial.println(flag);
   int counter = EncCounter();
   // flag used to press AltGr + Tab the first time
   if (counter != old_counter && flag) {
@@ -91,11 +96,9 @@ void Tab_RAlt() {
       if (EncDir() == 1) {
         keyboard.key_code(RIGHT_ARROW);
         timer = millis();                 // reset timer
-        Serial.println("Right arrow, timer reset");
       } else if (EncDir() == 2) {
         keyboard.key_code(LEFT_ARROW);
         timer = millis();                 // reset timer
-        Serial.println("left arrow, timer reset");
       }
     }
   }
@@ -103,17 +106,54 @@ void Tab_RAlt() {
   if (digitalRead(S_ENC) && !flag) {
     flag = true;
     keyboard.key_code_raw(KEY_ENTER);
-    Serial.println("ENTER + FLAG = TRUE");
   }
   
   // Reset flag if timer runout
   if(!flag && (millis() - timer >= 1000)) flag = true;
 
+  // State transition
+  if(EncDoubleClik()) {
+    mode++;
+    first = true;
+  }
+
+  // Store variable
   old_counter = counter;
 }
 
-bool EncoderWasSleep() {
+void Vol_Control(){
+  /* Function to control volume trough encoder, play/pause when click*/
+
+    // Code executed only the first time in the state
+  if (first) {
+
+    first = false;
+  }
+
+  int counter = EncCounter();
+  
+  // If encoder move detect direction and control volume
+  if (counter != old_counter) {
+    if (counter % 2 == 1) {
+      // Do nothing
+    } else {
+      if (EncDir() == 1) {
+        keyboard.key_code(KEY_VOLUME_UP);
+      } else if (EncDir() == 2) {
+        keyboard.key_code(KEY_VOLUME_DOWN);
+      }
+    }
+  }
+
+  if (digitalRead(S_ENC)) keyboard.key_code(KEY_PLAY_PAUSE);
+
+  // State transition
+  if(EncDoubleClik()) {
+    mode--;
+    first = true;
+  }
 }
+
 
 int EncCounter() {
   // Function that return a modified counter variable after the motion of the encoder
@@ -138,4 +178,23 @@ int EncDir() {
     return 2;
   }
   return 0;
+}
+
+bool EncDoubleClik(){
+  // Function to check if the user double clicked on the encoder
+
+  bool reading = digitalRead(S_ENC);
+  
+  // Save timestamp when button change state
+  if (reading == HIGH) {
+    previousDebounceTime = lastDebounceTime;
+    lastDebounceTime = millis();
+  }
+
+  // If the button was pressed two times in an interval greater than DEBOUNCEDELAY but smaller than MAXDOUBLE we got a doubleclick
+  if ((lastDebounceTime - previousDebounceTime >= DEBOUNCEDELAY) && 
+      (lastDebounceTime - previousDebounceTime <= MAXDOUBLE)) return true;
+  
+  return false;
+
 }
