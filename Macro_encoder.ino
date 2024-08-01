@@ -1,8 +1,7 @@
 #include "PluggableUSBHID.h"
 #include "USBKeyboard.h"
 
-#define COMPILA 1
-
+// RP2040 zero connection
 #define A_ENC 12  // Pin signal A
 #define B_ENC 13  // Pin signal B
 #define S_ENC 11  // Pin switch signal
@@ -12,35 +11,45 @@
 #define GREEN 9
 #define BLUE 10
 
+// Value for analogWrite
+#define FULLON 512
+#define HALFON 100
+
+// Time value
 #define TAB_INTERVAL 1000
 #define DEBOUNCEDELAY 500
 #define DOUBLECLICK 400
 
+// Key definition
 #define KEY_TAB 0x09
 #define KEY_ENTER 0x28
 #define KEY_ESC 0x29
 
+// Encoder direction
 #define CCW -1
 #define CW 1
 
+// Number of mode implemented
 #define MAX_MODE 2
 
 USBKeyboard keyboard;
 
-// Encoder position
-int8_t pos = 0;
-int8_t old_pos = 0;
-
-bool transition = false;
-
+// Encoder state memory
 bool previousStateA = 0;
 bool previousStateS = 0;
+
+// Transition variable
+bool transition = false;
 bool first = true;
 bool flag = true;
 uint8_t mode = 0;
+
+// Timer variable
 uint32_t timer = 0;
 uint32_t transition_timer = 0;
 uint32_t timer1 = 0;
+uint32_t first_timer = 0;
+
 
 void setup() {
   pinMode(A_ENC, INPUT_PULLUP);
@@ -67,10 +76,10 @@ void loop() {
       break;
     
     case 1:
-      Coursor_control();
+      Cursor_control();
       break;
 
-    default:
+    default:    // Red blink -> error in the execution
 
       digitalWrite(BLUE, LOW);
       digitalWrite(GREEN, LOW);
@@ -106,10 +115,12 @@ void Tab_RAlt() {
 
   // Code executed only the first time in the state
   if (first) {
-    digitalWrite(RED, HIGH);
-    digitalWrite(GREEN, LOW);
-    digitalWrite(BLUE, LOW);
+    analogWrite(RED, FULLON);
+    analogWrite(GREEN, LOW);
+    analogWrite(BLUE, LOW);
     first = false;
+    first_timer = millis();
+    flag = true;
   }
   int rot = encoder_rotation();
   // flag used to press AltGr + Tab the first time
@@ -126,12 +137,10 @@ void Tab_RAlt() {
     // Use encoder as arrow if AltGr + Tab already pressed
     if (rot == CCW) {
       timer = millis();
-      Serial.println("Left arrow");
       keyboard.key_code(LEFT_ARROW);
     }
     if (rot == CW) {
       timer = millis();  // reset timer
-      Serial.println("Right arrow");
       keyboard.key_code(RIGHT_ARROW);
     } 
   }
@@ -143,7 +152,7 @@ void Tab_RAlt() {
   }
 
   // Press encoder => press enter and reset flag
-  if (digitalRead(S_ENC) && (millis() - timer1 >= DEBOUNCEDELAY )) {
+  if (digitalRead(S_ENC) && (millis() - timer1 >= DEBOUNCEDELAY ) && (millis() - first_timer >= DOUBLECLICK)) {
     flag = true;
     keyboard.key_code_raw(KEY_ENTER);
     timer1 = millis();
@@ -152,25 +161,45 @@ void Tab_RAlt() {
   state_transition();
 }
 
-void Coursor_control(){
+void Cursor_control(){
+  /* Control cursor left/right or up/down by rotating, press the encoder to change mod*/
+
   // Code executed only the first time in the state
   if (first) {
-    digitalWrite(RED, LOW);
-    digitalWrite(GREEN, HIGH);
-    digitalWrite(BLUE, LOW);
+    analogWrite(RED, LOW);
+    analogWrite(GREEN, FULLON);
+    analogWrite(BLUE, LOW);
     first = false;
+    flag = true;
   }
+
+  // Change flag variable once in DEBOUNCEDELAY ms
+  if((millis() - timer >= DEBOUNCEDELAY) && digitalRead(S_ENC)){
+    flag = !flag;
+    timer = millis();
+  } 
 
   int8_t rot = encoder_rotation();
 
-  if(rot == CW) keyboard.key_code(RIGHT_ARROW);
-  if(rot == CCW) keyboard.key_code(LEFT_ARROW);
+  if(flag){
+    if(rot == CW) keyboard.key_code(RIGHT_ARROW);
+    if(rot == CCW) keyboard.key_code(LEFT_ARROW);
+    analogWrite(RED, LOW);
+  }
+  else{   
+    if(rot == CW) keyboard.key_code(DOWN_ARROW);
+    if(rot == CCW) keyboard.key_code(UP_ARROW);
+    analogWrite(RED, HALFON);
+  }
 
+  // Function that handle state transition
   state_transition();
 
 }
 
 void state_transition(){
+  /* Function that detect a doubleclick to change the variable "mode" */
+
   bool stateS = digitalRead(S_ENC);
 
   // Check if there is a double click between now and the previous loop
@@ -190,7 +219,6 @@ void state_transition(){
     transition = true;
     transition_timer = millis();
   }
-
 
   // Reset flag if too much time pass
   if(transition && (millis()- transition_timer > DOUBLECLICK)) transition = false;
