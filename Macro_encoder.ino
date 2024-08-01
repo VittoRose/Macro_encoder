@@ -1,19 +1,21 @@
 #include "PluggableUSBHID.h"
 #include "USBKeyboard.h"
 
-#define A_ENC 0  // Pin signal A
-#define B_ENC 1  // Pin signal B
-#define S_ENC 2  // Pin switch signal
+#define A_ENC 12  // Pin signal A
+#define B_ENC 13 // Pin signal B
+#define S_ENC 11  // Pin switch signal
 #define ENABLE 3
-#define SIZE 100
+
+#define RED   8
+#define GREEN 9
+#define BLUE 10
 
 #define DEBOUNCEDELAY 70
 #define MAXDOUBLE 400  // Max time to check doubleclick
 
-#define TAB_INTERVAL 1000
-
 #define KEY_TAB 0x09
 #define KEY_ENTER 0x28
+#define KEY_ESC 0x29
 
 USBKeyboard keyboard;
 
@@ -27,6 +29,7 @@ bool first = true;
 unsigned long previousDebounceTime = 0;
 unsigned long lastDebounceTime = 0;
 unsigned long timer = 0;
+unsigned long timer1 = 0;
 
 
 void setup() {
@@ -35,9 +38,13 @@ void setup() {
   pinMode(B_ENC, INPUT_PULLUP);
   pinMode(S_ENC, INPUT_PULLDOWN);
 
+  pinMode(RED, OUTPUT);
+  pinMode(GREEN, OUTPUT);
+  pinMode(BLUE, OUTPUT);
+
   previousStateA = digitalRead(A_ENC);
 
-  Serial.begin(115200);
+  Serial.begin(9600);
 }
 
 void loop() {
@@ -60,10 +67,13 @@ void Tab_RAlt() {
 
   // Code executed only the first time in the state
   if (first) {
-
+    digitalWrite(RED, HIGH);
+    digitalWrite(GREEN, HIGH);
+    digitalWrite(BLUE, LOW);
     first = false;
   }
-  //Serial.println(flag);
+  
+  
   counter = EncCounter();
   // flag used to press AltGr + Tab the first time
 
@@ -71,6 +81,7 @@ void Tab_RAlt() {
     if (counter != old_counter) {
 
       timer = millis();  // reset timer
+      Serial.println("Timer reset");
 
       if (counter % 2 == 1) {
         // Do nothing
@@ -83,11 +94,11 @@ void Tab_RAlt() {
         flag = false;
       }
     }
-  } else {
+  } else /*(if flag == flase)*/ { 
     // Use encoder as arrow if AltGr + Tab already pressed
     if (counter != old_counter) {
-
       timer = millis();  // reset timer
+      Serial.println("Timer reset");
 
       if (counter % 2 == 1) {
         // Do nothing
@@ -98,20 +109,22 @@ void Tab_RAlt() {
         } else if (EncDir() == 2) {
           keyboard.key_code(LEFT_ARROW);
         }
+        //delay(100);
       }
     }
+  }
 
-    // Reset flag if too much time pass
-    if (millis() - timer >= TAB_INTERVAL) flag = true;
+  // Reset flag frequently, because the laptop sometimes don't recive the first input correctly
+  if (millis() - timer > TAB_INTERVAL) {
+    flag = true;
+    timer = millis();
   }
 
   // Press encoder => press enter and reset flag
-  if (digitalRead(S_ENC)) {
+  if (digitalRead(S_ENC) && (millis() - timer1 >= TAB_INTERVAL)) {
     flag = true;
     keyboard.key_code_raw(KEY_ENTER);
-    delay(300);  // debounce delay
   }
-
 
   // State transition
   if (EncDoubleClik()) {
@@ -128,7 +141,9 @@ void Vol_Control() {
 
   // Code executed only the first time in the state
   if (first) {
-
+    digitalWrite(RED, HIGH);
+    digitalWrite(GREEN, LOW);
+    digitalWrite(BLUE, LOW);
     first = false;
   }
 
@@ -136,16 +151,19 @@ void Vol_Control() {
 
   // If encoder move detect direction and control volume
   if (counter != old_counter) {
-    if (counter % 2 == 1) {
+    //if (counter % 2 == 1) {
       // Do nothing
-    } else {
+    //} else {
       if (EncDir() == 1) {
         keyboard.key_code(RIGHT_ARROW);
       } else if (EncDir() == 2) {
         keyboard.key_code(LEFT_ARROW);
       }
     }
-  }
+  //}
+
+  // Update counter for next cylce
+  old_counter = counter;
 
   // State transition
   if (EncDoubleClik()) {
