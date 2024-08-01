@@ -12,7 +12,9 @@
 #define GREEN 9
 #define BLUE 10
 
-#define TAB_INTERVAL 5000
+#define TAB_INTERVAL 1000
+#define DEBOUNCEDELAY 500
+#define DOUBLECLICK 400
 
 #define KEY_TAB 0x09
 #define KEY_ENTER 0x28
@@ -21,18 +23,23 @@
 #define CCW -1
 #define CW 1
 
+#define MAX_MODE 2
+
 USBKeyboard keyboard;
 
 // Encoder position
 int8_t pos = 0;
 int8_t old_pos = 0;
 
+bool transition = false;
 
 bool previousStateA = 0;
 bool first = true;
 bool flag = true;
 uint8_t mode = 0;
-unsigned long timer = 0;
+uint32_t timer = 0;
+uint32_t transition_timer = 0;
+uint32_t timer1 = 0;
 
 void setup() {
   pinMode(A_ENC, INPUT_PULLUP);
@@ -47,40 +54,32 @@ void setup() {
   Serial.begin(9600);
 }
 
-#if COMPILA == 1
 void loop() {
-  //Serial.println(pos);
+  
+  // Do not remove delay 
+  delay(1); 
+  
   switch (mode) {
+    
     case 0:
       Tab_RAlt();
       break;
+    
     case 1:
-      Serial.println("Mode 1");
+      Coursor_control();
       break;
-    default:
-      Serial.println("Mode default");
-      break;
-  }
-}
-#endif
 
-#if COMPILA == 0
-void loop(){
-  int a = encoder_rotation();
-  if(a)  {
-    pos = pos + a;
-    Serial.print(pos); Serial.print("\t"); Serial.println(a);
+    default:
+
+      digitalWrite(BLUE, LOW);
+      digitalWrite(GREEN, LOW);
+      digitalWrite(RED,HIGH);
+      delay(300);
+      digitalWrite(RED,LOW);
+      delay(300);
+      break;
   }
-  
-  //if (millis() - timer >= 200){
-  Serial.println(pos);
-  if(pos > old_pos) Serial.println("CW");
-  if(pos < old_pos) Serial.println("CCW");
-  old_pos = pos;
-  //timer = millis();
-  //}
 }
-#endif
 
 int8_t encoder_rotation() {
 
@@ -116,8 +115,6 @@ void Tab_RAlt() {
   if (flag) {
     if (rot != 0) {
 
-      Serial.println("Encoder_motion");
-
       timer = millis();  // reset timer
       keyboard.key_code(KEY_TAB, KEY_RALT); // Open App selection
 
@@ -145,9 +142,49 @@ void Tab_RAlt() {
   }
 
   // Press encoder => press enter and reset flag
-  if (digitalRead(S_ENC)) {
+  if (digitalRead(S_ENC) && (millis() - timer1 >= DEBOUNCEDELAY )) {
     flag = true;
     keyboard.key_code_raw(KEY_ENTER);
-    delay(300);
+    timer1 = millis();
   }
+
+  state_transition();
+}
+
+void Coursor_control(){
+  // Code executed only the first time in the state
+  if (first) {
+    digitalWrite(RED, LOW);
+    digitalWrite(GREEN, HIGH);
+    digitalWrite(BLUE, LOW);
+    first = false;
+  }
+
+  int8_t rot = encoder_rotation();
+
+  if(rot == CW) keyboard.key_code(RIGHT_ARROW);
+  if(rot == CCW) keyboard.key_code(LEFT_ARROW);
+
+  state_transition();
+
+}
+
+void state_transition(){
+  // Save time when clicked
+  if(digitalRead(S_ENC) && !transition) {
+    transition = true;
+    transition_timer = millis();
+  }
+
+  // Check if there is a double click
+  if(transition && digitalRead(S_ENC) && (millis() - transition_timer <= DOUBLECLICK)){
+    
+    transition = false;
+    first = true;
+    
+    mode ++; if(mode > MAX_MODE-1) mode = 0;   // Switch mode
+  }
+
+  // Reset flag if too much time pass
+  if(transition && (millis()- transition_timer > DOUBLECLICK)) transition = false;
 }
