@@ -34,6 +34,7 @@ int8_t old_pos = 0;
 bool transition = false;
 
 bool previousStateA = 0;
+bool previousStateS = 0;
 bool first = true;
 bool flag = true;
 uint8_t mode = 0;
@@ -83,7 +84,7 @@ void loop() {
 
 int8_t encoder_rotation() {
 
-  int n = digitalRead(A_ENC);
+  bool n = digitalRead(A_ENC);
   int8_t ans = 0;
 
   // Check for rising condition
@@ -170,21 +171,30 @@ void Coursor_control(){
 }
 
 void state_transition(){
-  // Save time when clicked
-  if(digitalRead(S_ENC) && !transition) {
-    transition = true;
-    transition_timer = millis();
-  }
+  bool stateS = digitalRead(S_ENC);
 
-  // Check if there is a double click
-  if(transition && digitalRead(S_ENC) && (millis() - transition_timer <= DOUBLECLICK)){
+  // Check if there is a double click between now and the previous loop
+  if(transition && stateS && (millis() - transition_timer <= DOUBLECLICK && !previousStateS)){
     
     transition = false;
     first = true;
+
+    // Update timer to avoid moultiple mode change
+    transition_timer = millis() + DOUBLECLICK;
     
     mode ++; if(mode > MAX_MODE-1) mode = 0;   // Switch mode
   }
 
+  // Save time when clicked first time
+  if((!previousStateS) && stateS && !transition) {
+    transition = true;
+    transition_timer = millis();
+  }
+
+
   // Reset flag if too much time pass
   if(transition && (millis()- transition_timer > DOUBLECLICK)) transition = false;
+
+  // Save Switch state
+  previousStateS = stateS;
 }
