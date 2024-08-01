@@ -1,6 +1,8 @@
 #include "PluggableUSBHID.h"
 #include "USBKeyboard.h"
 
+#define COMPILA 1
+
 #define A_ENC 12  // Pin signal A
 #define B_ENC 13  // Pin signal B
 #define S_ENC 11  // Pin switch signal
@@ -21,6 +23,11 @@
 
 USBKeyboard keyboard;
 
+// Encoder position
+int8_t pos = 0;
+int8_t old_pos = 0;
+
+
 bool previousStateA = 0;
 bool first = true;
 bool flag = true;
@@ -40,8 +47,9 @@ void setup() {
   Serial.begin(9600);
 }
 
+#if COMPILA == 1
 void loop() {
-
+  //Serial.println(pos);
   switch (mode) {
     case 0:
       Tab_RAlt();
@@ -54,6 +62,25 @@ void loop() {
       break;
   }
 }
+#endif
+
+#if COMPILA == 0
+void loop(){
+  int a = encoder_rotation();
+  if(a)  {
+    pos = pos + a;
+    Serial.print(pos); Serial.print("\t"); Serial.println(a);
+  }
+  
+  //if (millis() - timer >= 200){
+  Serial.println(pos);
+  if(pos > old_pos) Serial.println("CW");
+  if(pos < old_pos) Serial.println("CCW");
+  old_pos = pos;
+  //timer = millis();
+  //}
+}
+#endif
 
 int8_t encoder_rotation() {
 
@@ -63,12 +90,10 @@ int8_t encoder_rotation() {
   // Check for rising condition
   if ((previousStateA == HIGH) && (n == LOW)) {
     if (digitalRead(B_ENC) == HIGH) {
-      //Serial.println("CCW");
-      previousStateA = n;
+      Serial.println("CCW");
       ans = CCW;
     } else {
-      //Serial.println("CW");
-      previousStateA = n;
+      Serial.println("CW");
       ans = CW;
     }
   }
@@ -86,10 +111,10 @@ void Tab_RAlt() {
     digitalWrite(BLUE, LOW);
     first = false;
   }
-
+  int rot = encoder_rotation();
   // flag used to press AltGr + Tab the first time
   if (flag) {
-    if (encoder_rotation() != 0) {
+    if (rot != 0) {
 
       Serial.println("Encoder_motion");
 
@@ -101,15 +126,16 @@ void Tab_RAlt() {
   }
   else /*(if flag == flase)*/ {
     // Use encoder as arrow if AltGr + Tab already pressed
-    if (encoder_rotation() == CW) {
-      timer = millis();  // reset timer
-      Serial.println("Right arrow");
-      keyboard.key_code(RIGHT_ARROW);
-    } else if (encoder_rotation() == CCW) {
+    if (rot == CCW) {
       timer = millis();
       Serial.println("Left arrow");
       keyboard.key_code(LEFT_ARROW);
     }
+    if (rot == CW) {
+      timer = millis();  // reset timer
+      Serial.println("Right arrow");
+      keyboard.key_code(RIGHT_ARROW);
+    } 
   }
 
   // Reset flag frequently, because the laptop sometimes don't recive the first input correctly
